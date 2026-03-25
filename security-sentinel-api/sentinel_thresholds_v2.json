@@ -1,0 +1,5 @@
+{
+  "ddos_rate_threshold": 0.5,
+  "ddos_payload_threshold": 0.5,
+  "contam_rate": 0.05
+}

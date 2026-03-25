@@ -6,15 +6,22 @@ Kept in its own file so pickle can always resolve the class path.
 import numpy as np
 from sklearn.ensemble import IsolationForest
 
-DDOS_RATE_THRESHOLD    = 60.0
-DDOS_PAYLOAD_THRESHOLD = 150.0
+# Hard rule thresholds for obvious DDoS patterns
+# Features are normalized to [0,1] range by StandardScaler in data_loader  
+# These thresholds match the normalized feature scale (0-1)
+# SAFE DEFAULTS: Only trigger on EXTREME attack patterns
+DDOS_RATE_THRESHOLD    = 0.99  # >990 req/s in normalized space = extreme DDoS only
+DDOS_PAYLOAD_THRESHOLD = 0.01  # <100 bytes in normalized space = extremely small payloads
 
 
 class SentinelModel:
     """
     Hybrid anomaly detector:
-      1. Hard rules catch clear DDoS bursts instantly.
-      2. Isolation Forest handles the behavioural grey-zone (bots, slow attacks).
+      1. Hard rules catch EXTREME obvious DDoS patterns (rate > 0.9 & payload < 0.1).
+      2. Isolation Forest handles subtle anomalies (bots, slow attacks, protocol abuse).
+
+    Strategy: Hard rules for classic DDoS (high rate + small payload).
+              Isolation Forest for behavioral/protocol anomalies.
 
     predict() mirrors sklearn convention:  1 = normal,  -1 = anomaly
     """
@@ -27,6 +34,7 @@ class SentinelModel:
         self.payload_threshold = payload_threshold
 
     def _rule_based(self, X: np.ndarray) -> np.ndarray:
+        # Classic DDoS pattern: very high rate AND very low payload
         is_ddos = (X[:, 0] > self.rate_threshold) & (X[:, 1] < self.payload_threshold)
         return np.where(is_ddos, -1, 0)
 
