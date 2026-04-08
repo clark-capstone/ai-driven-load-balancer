@@ -5,6 +5,7 @@ import java.lang.management.MemoryMXBean;
 import java.net.InetAddress;
 import java.time.Instant;
 
+import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -13,6 +14,7 @@ import com.capstone.alb.service.RequestCounterService;
 import com.sun.management.OperatingSystemMXBean;
 
 @RestController
+@CrossOrigin(origins = "*")
 public class MetricsController {
 
     private final RequestCounterService requestCounter;
