@@ -13,7 +13,6 @@ public class CpuController {
 
         OperatingSystemMXBean osBean = ManagementFactory.getPlatformMXBean(OperatingSystemMXBean.class);
         double cpuLoad = osBean.getCpuLoad() * 100;
-        System.out.println("CPU Usage: " + cpuLoad);
         return cpuLoad;
     }
 }
