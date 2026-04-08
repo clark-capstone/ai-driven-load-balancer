@@ -1,61 +1,82 @@
 import React from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Clock, CheckCircle2, XCircle } from 'lucide-react'
 
 const formatTime = value => {
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleTimeString()
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
 const LogFeed = ({ history }) => (
-  <div className="flex h-[760px] flex-col overflow-hidden rounded-[28px] border border-white/10 bg-slate-950/70 shadow-[0_24px_80px_rgba(15,23,42,0.35)] backdrop-blur">
-    <div className="border-b border-white/10 p-5">
-      <h3 className="text-lg font-black tracking-[0.18em] text-white">Live Routing History</h3>
-      <p className="mt-2 text-sm text-slate-400">
-        Every polling cycle records both server states and the final chosen server.
+  <div className="glass-card flex h-[690px] min-h-0 flex-col overflow-hidden xl:h-full">
+    <div className="border-b border-white/5 p-6">
+      <h3 className="text-sm font-bold tracking-tight text-white">Routing History</h3>
+      <p className="mt-1 text-xs text-slate-500">
+        Real-time log of load balancer decisions.
       </p>
     </div>
 
-    <div className="flex-1 space-y-3 overflow-y-auto p-4 font-mono text-xs">
-      {history.length === 0 && (
-        <div className="rounded-3xl border border-dashed border-white/10 bg-white/5 px-4 py-10 text-center text-slate-500">
-          Waiting for the first live routing cycle.
-        </div>
-      )}
-
-      {history.map(entry => (
-        <motion.div
-          key={entry.id}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className={`rounded-3xl border p-4 ${entry.status === 'ROUTED' ? 'border-emerald-400/20 bg-emerald-400/6' : 'border-rose-400/30 bg-rose-400/8'}`}
-        >
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <span className={`text-[11px] font-black uppercase tracking-[0.28em] ${entry.status === 'ROUTED' ? 'text-emerald-300' : 'text-rose-300'}`}>
-              {entry.status}
-            </span>
-            <span className="text-slate-500">{formatTime(entry.timestamp)}</span>
+    <div className="log-scroll flex-1 space-y-3 overflow-y-auto p-4">
+      <AnimatePresence initial={false}>
+        {history.length === 0 ? (
+          <div className="flex h-32 items-center justify-center rounded-xl border border-dashed border-white/5 bg-white/5 text-xs text-slate-500">
+            Awaiting first telemetry...
           </div>
-
-          <div className="text-slate-100">Chosen server: {entry.chosenServer}</div>
-          <div className="mt-2 text-slate-400">{entry.decision}</div>
-
-          <div className="mt-4 space-y-2">
-            {entry.servers.map(server => (
-              <div key={`${entry.id}-${server.name}`} className="rounded-2xl bg-white/5 px-3 py-2 text-slate-300">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="font-black uppercase tracking-[0.2em]">{server.name}</span>
-                  <span>{server.active ? 'active' : 'inactive'}</span>
+        ) : (
+          history.map(entry => (
+            <motion.div
+              key={entry.id}
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="group relative rounded-xl border border-white/5 bg-slate-900/30 p-4 transition-colors hover:bg-slate-900/50"
+            >
+              <div className="mb-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {entry.status === 'ROUTED' ? (
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                  ) : (
+                    <XCircle className="h-3.5 w-3.5 text-rose-500" />
+                  )}
+                  <span className={`text-[10px] font-black uppercase tracking-widest ${entry.status === 'ROUTED' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {entry.status}
+                  </span>
                 </div>
-                <div className="mt-1 flex items-center justify-between gap-3 text-[11px] text-slate-400">
-                  <span>CPU: {typeof server.cpuUsage === 'number' ? `${server.cpuUsage.toFixed(1)}%` : 'n/a'}</span>
-                  <span>Memory: {typeof server.memoryUsage === 'number' ? `${server.memoryUsage.toFixed(1)}%` : 'n/a'}</span>
+                <div className="flex items-center gap-1.5 text-[10px] font-medium text-slate-500">
+                  <Clock className="h-3 w-3" />
+                  {formatTime(entry.timestamp)}
                 </div>
-                {server.error && <div className="mt-1 text-[11px] text-rose-300">{server.error}</div>}
               </div>
-            ))}
-          </div>
-        </motion.div>
-      ))}
+
+              <div className="flex items-baseline gap-2">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">Target:</span>
+                <span className="text-sm font-bold text-slate-200">{entry.chosenServer}</span>
+              </div>
+              <div className="mt-1 flex items-baseline gap-2">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">AI:</span>
+                <span className={`text-[11px] font-bold ${entry.aiVerdict === 'BLOCKED' ? 'text-rose-300' : entry.aiVerdict === 'UNAVAILABLE' ? 'text-amber-300' : 'text-emerald-300'}`}>
+                  {entry.aiVerdict}
+                </span>
+                <span className="text-[10px] text-slate-500">rate {entry.requestRate}</span>
+              </div>
+              
+              <div className="mt-1 text-xs text-slate-400 leading-relaxed">
+                {entry.decision}
+              </div>
+
+              <div className="mt-4 grid grid-cols-3 gap-2">
+                {entry.servers.map(server => (
+                  <div key={`${entry.id}-${server.name}`} className="rounded-lg bg-slate-800/40 px-2 py-1.5 text-center">
+                    <div className="truncate text-[9px] font-bold text-slate-400 uppercase">{server.name}</div>
+                    <div className={`mt-0.5 text-[10px] font-mono font-bold ${server.active ? 'text-emerald-400/80' : 'text-rose-400/80'}`}>
+                      {typeof server.cpuUsage === 'number' ? `${Math.round(server.cpuUsage)}%` : 'OFF'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          ))
+        )}
+      </AnimatePresence>
     </div>
   </div>
 )

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { Activity, Clock3, Cpu, RefreshCcw, Server, ShieldCheck } from 'lucide-react'
+import { Activity, Clock3, RefreshCcw, Server, ShieldCheck } from 'lucide-react'
 import './App.css'
 import SimulationView from './components/SimulationView'
 import LogFeed from './components/LogFeed'
@@ -12,6 +12,8 @@ const SERVERS = [
     id: 'server-1',
     name: 'Server-1',
     baseUrl: 'http://localhost:8080',
+    metricsUrl: '/metrics',
+    routeToken: 'LOCAL',
     region: 'Localhost',
     enabled: true,
   },
@@ -19,6 +21,8 @@ const SERVERS = [
     id: 'server-2',
     name: 'Server-2',
     baseUrl: 'https://a5a3-2600-6c64-623f-76f6-e955-1de0-2335-545e.ngrok-free.app',
+    metricsUrl: '/server-2-metrics',
+    routeToken: 'a5a3-2600-6c64-623f-76f6-e955-1de0-2335-545e.ngrok-free.app',
     region: 'Remote ngrok',
     enabled: true,
   },
@@ -26,16 +30,23 @@ const SERVERS = [
     id: 'server-3',
     name: 'Server-3',
     baseUrl: null,
+    routeToken: null,
     region: 'Disabled',
     enabled: false,
   },
 ]
 
-const formatPercent = value => (typeof value === 'number' ? `${value.toFixed(1)}%` : 'n/a')
-
 const formatClock = value => {
   if (!value) return 'waiting'
   return new Date(value).toLocaleTimeString()
+}
+
+const buildDemoPayload = tick => {
+  const attackPulse = tick % 6 === 5
+
+  return attackPulse
+    ? { payload_size: 120, request_rate: 25, path: '/api/burst-demo' }
+    : { payload_size: 120, request_rate: 4, path: '/api/steady-demo' }
 }
 
 const normalizeServerState = async server => {
@@ -53,7 +64,7 @@ const normalizeServerState = async server => {
   }
 
   try {
-    const response = await fetch(`${server.baseUrl}/metrics`)
+    const response = await fetch(server.metricsUrl ?? `${server.baseUrl}/metrics`)
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`)
     }
@@ -84,7 +95,7 @@ const normalizeServerState = async server => {
   }
 }
 
-const pickBestServer = servers => {
+const predictBestServer = servers => {
   const activeServers = servers.filter(server => server.active)
 
   if (activeServers.length === 0) {
@@ -117,14 +128,17 @@ const pickBestServer = servers => {
 }
 
 const StatsCard = ({ title, value, icon: Icon, tone }) => (
-  <div className="rounded-3xl border border-white/10 bg-slate-950/70 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.35)] backdrop-blur">
-    <div className="mb-4 flex items-start justify-between">
-      <div className={`rounded-2xl p-3 ${tone}`}>
-        <Icon className="h-6 w-6 text-white" />
+  <div className="glass-card p-5 transition-all duration-300 hover:scale-[1.02]">
+    <div className="mb-4 flex items-center justify-between">
+      <div className={`flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900/50 ${tone}`}>
+        <Icon className="h-5 w-5" />
       </div>
+      <div className="h-1.5 w-1.5 rounded-full bg-slate-700" />
     </div>
-    <div className="text-sm font-medium text-slate-400">{title}</div>
-    <div className="mt-1 text-3xl font-black tracking-tight text-white">{value}</div>
+    <div className="text-[11px] font-bold uppercase tracking-[0.15em] text-slate-400">{title}</div>
+    <div className="mt-1 flex items-baseline gap-2">
+      <div className="truncate text-2xl font-black tracking-tight text-white">{value}</div>
+    </div>
   </div>
 )
 
@@ -140,7 +154,8 @@ function App() {
     error: null,
   })))
   const [chosenServerId, setChosenServerId] = useState(null)
-  const [decision, setDecision] = useState('Waiting for first poll')
+  const [decision, setDecision] = useState('Initializing...')
+  const [aiVerdict, setAiVerdict] = useState('WAITING')
   const [history, setHistory] = useState([])
   const [simulatedRequests, setSimulatedRequests] = useState([])
   const [lastUpdatedAt, setLastUpdatedAt] = useState(null)
@@ -148,61 +163,91 @@ function App() {
 
   useEffect(() => {
     let cancelled = false
+    let tick = 0
 
     const loadLiveState = async () => {
-      const nextServers = await Promise.all(SERVERS.map(normalizeServerState))
-      const { selectedServer, decision: nextDecision } = pickBestServer(nextServers)
+      const payload = buildDemoPayload(tick)
+      tick += 1
 
-      if (cancelled) {
-        return
+      const nextServers = await Promise.all(SERVERS.map(normalizeServerState))
+      const { selectedServer: predictedServer, decision: predictedDecision } = predictBestServer(nextServers)
+
+      let chosenServer = predictedServer
+      let nextDecision = predictedDecision
+      let nextAiVerdict = 'ALLOW'
+
+      try {
+        const routeResponse = await fetch('/route', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        })
+
+        const routeText = await routeResponse.text()
+
+        if (routeText.includes('BLOCKED_BY_AI_SENTINEL')) {
+          chosenServer = null
+          nextAiVerdict = 'BLOCKED'
+          nextDecision = 'AI Sentinel blocked the current request before routing'
+        } else {
+          const routeMatchedServer = nextServers.find(server => server.routeToken && routeText.includes(server.routeToken))
+          if (routeMatchedServer) {
+            chosenServer = routeMatchedServer
+          }
+        }
+      } catch (error) {
+        nextAiVerdict = 'UNAVAILABLE'
+        nextDecision = 'AI route check unavailable, showing metric-based fallback'
       }
 
+      if (cancelled) return
+
       setServers(nextServers)
-      setChosenServerId(selectedServer?.id ?? null)
+      setChosenServerId(chosenServer?.id ?? null)
       setDecision(nextDecision)
+      setAiVerdict(nextAiVerdict)
       setLastUpdatedAt(Date.now())
-      setStatus(selectedServer ? 'LIVE' : 'DEGRADED')
+      setStatus(chosenServer || nextAiVerdict === 'BLOCKED' ? 'LIVE' : 'DEGRADED')
+
       setSimulatedRequests(current => {
         const nextRequest = {
-          id: `${Date.now()}-${selectedServer?.id ?? 'none'}`,
-          targetServerId: selectedServer?.id ?? null,
-          status: selectedServer ? 'ROUTED' : 'NO_SERVER',
+          id: `${Date.now()}-${chosenServer?.id ?? nextAiVerdict}`,
+          targetServerId: nextAiVerdict === 'BLOCKED' ? null : chosenServer?.id ?? null,
+          status: nextAiVerdict === 'BLOCKED' ? 'AI_BLOCKED' : chosenServer ? 'ROUTED' : 'NO_SERVER',
         }
-
-        return [...current, nextRequest].slice(-10)
+        return [...current, nextRequest].slice(-8)
       })
 
       setHistory(current => {
         const entry = {
-          id: `${Date.now()}-${selectedServer?.id ?? 'none'}`,
+          id: `${Date.now()}-${chosenServer?.id ?? nextAiVerdict}`,
           timestamp: new Date().toISOString(),
-          chosenServer: selectedServer?.name ?? 'none',
-          status: selectedServer ? 'ROUTED' : 'NO_SERVER',
+          chosenServer: chosenServer?.name ?? 'None',
+          status: nextAiVerdict === 'BLOCKED' ? 'AI_BLOCKED' : chosenServer ? 'ROUTED' : 'NO_SERVER',
+          aiVerdict: nextAiVerdict,
+          requestRate: payload.request_rate,
           decision: nextDecision,
           servers: nextServers.map(server => ({
-              name: server.name,
-              enabled: server.enabled,
-              active: server.active,
-              cpuUsage: server.cpuUsage,
-              memoryUsage: server.memoryUsage,
-              error: server.error,
-            })),
+            name: server.name,
+            enabled: server.enabled,
+            active: server.active,
+            cpuUsage: server.cpuUsage,
+            memoryUsage: server.memoryUsage,
+            error: server.error,
+          })),
         }
-
-        return [entry, ...current].slice(0, 20)
+        return [entry, ...current].slice(0, 15)
       })
     }
 
     loadLiveState()
     const intervalId = window.setInterval(loadLiveState, POLL_INTERVAL_MS)
-    const cleanupId = window.setInterval(() => {
-      setSimulatedRequests(current => current.slice(-6))
-    }, 1800)
 
     return () => {
       cancelled = true
       window.clearInterval(intervalId)
-      window.clearInterval(cleanupId)
     }
   }, [])
 
@@ -213,70 +258,58 @@ function App() {
 
   const metrics = useMemo(() => {
     const activeServers = servers.filter(server => server.active)
-    const averageCpu = activeServers.length > 0
-      ? activeServers.reduce((sum, server) => sum + (server.cpuUsage ?? 0), 0) / activeServers.length
-      : null
 
     return {
       chosenServer: chosenServer?.name ?? 'None',
+      aiVerdict,
       activeServers: activeServers.length,
-      averageCpu: averageCpu != null ? `${averageCpu.toFixed(1)}%` : 'n/a',
       lastUpdated: formatClock(lastUpdatedAt),
     }
-  }, [chosenServer, lastUpdatedAt, servers])
+  }, [aiVerdict, chosenServer, lastUpdatedAt, servers])
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.2),_transparent_24%),radial-gradient(circle_at_top_right,_rgba(34,197,94,0.14),_transparent_22%),linear-gradient(180deg,_#020617_0%,_#0f172a_42%,_#111827_100%)] px-4 py-6 text-slate-100 sm:px-6">
-      <header className="mx-auto flex max-w-7xl flex-col gap-6 md:flex-row md:items-center md:justify-between">
-        <div>
-          <div className="mb-2 flex items-center gap-3">
-            <div className={`h-3 w-3 rounded-full ${status === 'LIVE' ? 'bg-emerald-400 shadow-[0_0_18px_#34d399]' : 'bg-amber-400 shadow-[0_0_18px_#f59e0b]'}`} />
-            <h1 className="text-3xl font-black tracking-[-0.08em] text-white sm:text-4xl">n8n Load Balancer Monitor</h1>
-          </div>
-          <p className="flex items-center gap-2 text-sm font-medium uppercase tracking-[0.28em] text-slate-400">
-            <ShieldCheck className="h-4 w-4" />
-            Live server metrics, current routing decision, and polling history
-          </p>
-        </div>
-
-        <div className="rounded-3xl border border-white/10 bg-slate-950/50 px-5 py-3 text-sm font-semibold text-slate-300 shadow-[0_20px_60px_rgba(15,23,42,0.25)] backdrop-blur">
-          {status}
-        </div>
-      </header>
-
-      <main className="mx-auto mt-8 grid max-w-7xl grid-cols-1 gap-6 xl:grid-cols-4">
-        <div className="grid grid-cols-1 gap-6 xl:col-span-3">
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 2xl:grid-cols-4">
-            <StatsCard title="Chosen Server" value={metrics.chosenServer} icon={Server} tone="bg-cyan-500/80" />
-            <StatsCard title="Active Servers" value={String(metrics.activeServers)} icon={Activity} tone="bg-emerald-500/80" />
-            <StatsCard title="Average CPU" value={metrics.averageCpu} icon={Cpu} tone="bg-amber-500/80" />
-            <StatsCard title="Last Poll" value={metrics.lastUpdated} icon={Clock3} tone="bg-indigo-500/80" />
+    <div className="h-screen overflow-hidden bg-[#020617] bg-[radial-gradient(ellipse_at_top,_rgba(30,58,138,0.15),_transparent_60%)] px-6 py-6 text-slate-100">
+      <main className="mx-auto grid h-full max-w-[1600px] grid-cols-1 gap-6 xl:grid-cols-[1.6fr_1fr]">
+        <div className="flex min-h-0 flex-col gap-6">
+          <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+            <StatsCard title="Current Target" value={metrics.chosenServer} icon={Server} tone="text-cyan-400" />
+            <StatsCard title="AI Verdict" value={metrics.aiVerdict} icon={ShieldCheck} tone={metrics.aiVerdict === 'BLOCKED' ? 'text-rose-400' : 'text-emerald-400'} />
+            <StatsCard title="Nodes Online" value={String(metrics.activeServers)} icon={Activity} tone="text-emerald-400" />
+            <StatsCard title="Last Pulse" value={metrics.lastUpdated} icon={Clock3} tone="text-indigo-400" />
           </div>
 
-          <section className="rounded-[28px] border border-white/10 bg-slate-950/55 p-5 shadow-[0_24px_80px_rgba(15,23,42,0.35)] backdrop-blur">
-            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <section className="glass-card flex min-h-0 flex-1 flex-col overflow-hidden p-6">
+            <div className="mb-4 flex items-center justify-between">
               <div>
-                <h2 className="flex items-center gap-2 text-lg font-bold text-white">
-                  <RefreshCcw className="h-5 w-5 text-cyan-300" />
-                  Live Routing View
+                <h2 className="flex items-center gap-2.5 text-sm font-bold tracking-tight text-white">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400">
+                    <RefreshCcw className="h-3.5 w-3.5" />
+                  </div>
+                  Simulation Environment
                 </h2>
-                <p className="mt-1 text-sm text-slate-400">{decision}</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {decision}
+                </p>
               </div>
-              <div className="rounded-full border border-cyan-300/30 bg-cyan-400/10 px-4 py-2 text-xs font-black uppercase tracking-[0.26em] text-cyan-200">
-                Polling every 3 seconds
+              <div className="rounded-full bg-slate-900/50 px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                Poll Cycle: 3s
               </div>
             </div>
 
-            <SimulationView
-              servers={servers}
-              chosenServerId={chosenServerId}
-              cpuThreshold={CPU_THRESHOLD}
-              requests={simulatedRequests}
-            />
+            <div className="flex min-h-0 flex-1 items-center justify-center">
+              <div className="w-full">
+                <SimulationView
+                  servers={servers}
+                  chosenServerId={chosenServerId}
+                  cpuThreshold={CPU_THRESHOLD}
+                  requests={simulatedRequests}
+                />
+              </div>
+            </div>
           </section>
         </div>
 
-        <div className="xl:col-span-1">
+        <div className="min-h-0 pb-2">
           <LogFeed history={history} />
         </div>
       </main>

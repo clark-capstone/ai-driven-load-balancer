@@ -1,152 +1,188 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowRight, Boxes, Cpu, Server } from 'lucide-react'
+import { Boxes, Cpu, Server, Activity, AlertCircle } from 'lucide-react'
 
-const toneForServer = (server, chosenServerId) => {
-  if (!server.enabled) return 'border-slate-500/30 bg-slate-400/8 text-slate-400'
-  if (!server.active) return 'border-rose-400/30 bg-rose-400/8 text-rose-200'
-  if (server.id === chosenServerId) return 'border-emerald-300/50 bg-emerald-400/12 text-emerald-100'
-  return 'border-white/10 bg-white/5 text-slate-100'
-}
+const ServerCard = ({ server, isChosen }) => {
+  const statusColor = !server.enabled ? 'text-slate-500' : server.active ? 'text-emerald-400' : 'text-rose-400'
+  const borderColor = isChosen ? 'border-cyan-500/50 shadow-[0_0_15px_rgba(34,211,238,0.15)]' : 'border-white/5'
+  const bgColor = isChosen ? 'bg-cyan-500/5' : 'bg-slate-900/40'
 
-const targetPosition = {
-  'server-1': { left: '82%', top: '22%' },
-  'server-2': { left: '82%', top: '50%' },
-  'server-3': { left: '82%', top: '78%' },
-}
-
-const SimulationView = ({ servers, chosenServerId, cpuThreshold, requests }) => (
-  <div className="relative flex min-h-[540px] flex-col justify-between overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(145deg,_rgba(15,23,42,0.96),_rgba(15,23,42,0.68))] p-6 sm:p-8">
-    <div className="grid gap-6 lg:grid-cols-[0.8fr_0.8fr_1.4fr]">
-      <div className="flex items-center justify-center">
-        <div className="w-full rounded-[28px] border border-cyan-300/25 bg-cyan-400/8 p-6 text-center">
-          <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-[24px] border border-cyan-300/30 bg-cyan-400/12">
-            <Boxes className="h-10 w-10 text-cyan-200" />
-          </div>
-          <div className="text-sm font-black uppercase tracking-[0.24em] text-cyan-100">Request</div>
-          <div className="mt-2 text-xs uppercase tracking-[0.2em] text-slate-400">Single request block</div>
+  return (
+    <motion.div
+      layout
+      className={`relative rounded-xl border p-4 transition-all duration-300 ${borderColor} ${bgColor}`}
+    >
+      <div className="mb-3 flex items-start justify-between">
+        <div>
+          <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{server.region}</div>
+          <div className="mt-0.5 text-sm font-black text-white">{server.name}</div>
+        </div>
+        <div className={`flex h-8 w-8 items-center justify-center rounded-lg bg-slate-800/50 ${statusColor}`}>
+          <Server className="h-4 w-4" />
         </div>
       </div>
 
-      <div className="flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="rounded-[28px] border-2 border-indigo-400/45 bg-indigo-500/12 p-6 shadow-[0_0_60px_rgba(99,102,241,0.2)]">
-            <Cpu className="h-12 w-12 text-indigo-200" />
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <div className="text-[9px] font-bold uppercase tracking-tight text-slate-500">CPU Usage</div>
+          <div className="text-xs font-mono font-bold text-slate-200">
+            {typeof server.cpuUsage === 'number' ? `${server.cpuUsage.toFixed(1)}%` : 'Offline'}
           </div>
-          <div className="rounded-full bg-indigo-300/90 px-3 py-1 text-[10px] font-black uppercase tracking-[0.28em] text-slate-950">
-            Threshold {cpuThreshold}%
+          <div className="h-1 w-full overflow-hidden rounded-full bg-slate-800">
+             <motion.div 
+               initial={{ width: 0 }}
+               animate={{ width: `${server.cpuUsage ?? 0}%` }}
+               className={`h-full ${server.cpuUsage > 80 ? 'bg-rose-500' : server.cpuUsage > 50 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+             />
           </div>
-          <div className="text-center text-sm font-black uppercase tracking-[0.22em] text-white">Selection Engine</div>
+        </div>
+        <div className="space-y-1">
+          <div className="text-[9px] font-bold uppercase tracking-tight text-slate-500">Memory</div>
+          <div className="text-xs font-mono font-bold text-slate-200">
+            {typeof server.memoryUsage === 'number' ? `${server.memoryUsage.toFixed(1)}%` : 'Offline'}
+          </div>
+          <div className="h-1 w-full overflow-hidden rounded-full bg-slate-800">
+             <motion.div 
+               initial={{ width: 0 }}
+               animate={{ width: `${server.memoryUsage ?? 0}%` }}
+               className="h-full bg-indigo-500"
+             />
+          </div>
         </div>
       </div>
 
-      <div className="grid gap-3">
-        {servers.map(server => (
-          <div
-            key={server.id}
-            className={`rounded-[24px] border p-4 transition ${toneForServer(server, chosenServerId)}`}
-          >
-            <div className="mb-3 flex items-start justify-between gap-3">
-              <div>
-                <div className="text-sm font-black uppercase tracking-[0.22em]">{server.name}</div>
-                <div className="mt-1 text-xs uppercase tracking-[0.22em] text-slate-400">{server.region}</div>
-                <div className="mt-2 font-mono text-[11px] text-slate-400">{server.baseUrl}</div>
-              </div>
-              <div className={`rounded-2xl border p-2.5 ${!server.enabled ? 'border-slate-500/20 bg-slate-500/10' : server.active ? 'border-emerald-300/35 bg-emerald-400/10' : 'border-rose-300/30 bg-rose-400/10'}`}>
-                <Server className={`h-5 w-5 ${!server.enabled ? 'text-slate-400' : server.active ? 'text-emerald-200' : 'text-rose-200'}`} />
-              </div>
-            </div>
+      {server.error && (
+        <div className="mt-3 flex items-center gap-2 rounded-lg bg-rose-500/10 px-2 py-1.5 text-[10px] text-rose-300">
+          <AlertCircle className="h-3 w-3" />
+          <span className="truncate">{server.error}</span>
+        </div>
+      )}
 
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <div className="rounded-2xl bg-slate-900/70 p-2.5">
-                <div className="text-[11px] uppercase tracking-[0.22em] text-slate-500">CPU</div>
-                <div className="mt-1 text-lg font-black">{typeof server.cpuUsage === 'number' ? `${server.cpuUsage.toFixed(1)}%` : 'offline'}</div>
-              </div>
-              <div className="rounded-2xl bg-slate-900/70 p-2.5">
-                <div className="text-[11px] uppercase tracking-[0.22em] text-slate-500">Memory</div>
-                <div className="mt-1 text-lg font-black">{typeof server.memoryUsage === 'number' ? `${server.memoryUsage.toFixed(1)}%` : 'offline'}</div>
-              </div>
-            </div>
+      {isChosen && (
+        <div className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-cyan-500 shadow-[0_0_8px_#22d3ee]">
+          <Activity className="h-2.5 w-2.5 text-slate-950" />
+        </div>
+      )}
+    </motion.div>
+  )
+}
 
-            <div className="mt-3 flex items-center justify-between text-xs uppercase tracking-[0.22em] text-slate-400">
-              <span>{!server.enabled ? 'disabled' : server.active ? 'active' : 'inactive'}</span>
-              <span>{server.id === chosenServerId ? 'chosen server' : !server.enabled ? 'offline' : 'standby'}</span>
-            </div>
+const SimulationView = ({ servers, chosenServerId, cpuThreshold, requests }) => {
+  // We use a simplified vertical positioning for target servers in the animation
+  const serverIndexMap = useMemo(() => {
+    const map = {}
+    servers.forEach((s, i) => { map[s.id] = i })
+    return map
+  }, [servers])
 
-            {server.error && (
-              <div className={`mt-3 rounded-2xl border px-3 py-2 text-xs ${server.enabled ? 'border-rose-300/25 bg-rose-400/8 text-rose-200' : 'border-slate-500/20 bg-slate-500/10 text-slate-400'}`}>
-                {server.error}
-              </div>
-            )}
+  return (
+    <div className="relative flex h-full min-h-[400px] flex-col overflow-hidden rounded-2xl bg-slate-950/20 p-4">
+      <div className="grid h-full grid-cols-[1fr_auto_1.5fr] items-center gap-8">
+        
+        {/* Source Panel */}
+        <div className="flex flex-col items-center justify-center">
+          <div className="relative flex flex-col items-center gap-4">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/5 bg-slate-900/50 text-slate-400">
+              <Boxes className="h-8 w-8" />
+            </div>
+            <div className="text-center">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Traffic Source</div>
+              <div className="text-xs font-bold text-slate-300">Incoming Requests</div>
+            </div>
+            
+            {/* Connection line to hub */}
+            <div className="absolute left-full top-1/2 h-[1px] w-8 -translate-y-1/2 bg-gradient-to-r from-white/5 to-cyan-500/20" />
           </div>
-        ))}
+        </div>
+
+        {/* Load Balancer Hub */}
+        <div className="relative z-10 flex flex-col items-center">
+          <div className="group relative">
+            <div className="absolute -inset-4 rounded-full bg-cyan-500/5 blur-xl group-hover:bg-cyan-500/10 transition-all duration-500" />
+            <div className="relative flex h-20 w-20 flex-col items-center justify-center rounded-full border border-cyan-500/30 bg-slate-900/80 shadow-[0_0_30px_rgba(34,211,238,0.1)]">
+              <Cpu className="h-8 w-8 text-cyan-400" />
+              <div className="absolute -bottom-2 rounded-full bg-cyan-500 px-2 py-0.5 text-[8px] font-black text-slate-950 uppercase tracking-tighter">
+                AI HUB
+              </div>
+            </div>
+          </div>
+          <div className="mt-6 text-center">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Load Balancer</div>
+            <div className="text-[10px] font-bold text-cyan-400/80">Threshold: {cpuThreshold}%</div>
+          </div>
+        </div>
+
+        {/* Server List */}
+        <div className="grid gap-3">
+          {servers.map(server => (
+            <ServerCard 
+              key={server.id} 
+              server={server} 
+              isChosen={server.id === chosenServerId} 
+            />
+          ))}
+        </div>
       </div>
+
+      {/* Animation Layer */}
+      <div className="pointer-events-none absolute inset-0 z-20">
+        <AnimatePresence>
+          {requests.map(request => {
+            const targetIndex = serverIndexMap[request.targetServerId]
+            if (targetIndex === undefined && request.status !== 'NO_SERVER') return null
+
+            // Map server index to approximate vertical position (percentage)
+            const targetTop = request.targetServerId 
+              ? `${(100 / (servers.length * 2)) + (targetIndex * (100 / servers.length))}%` 
+              : '50%'
+
+            return (
+              <React.Fragment key={request.id}>
+                {/* Single Request Pulse: Source -> Hub -> Target */}
+                <motion.div
+                  initial={{ left: '15%', top: '50%', opacity: 0, scale: 0.5 }}
+                  animate={{ 
+                    left: ['15%', '43%', request.targetServerId ? '73%' : '55%'],
+                    top: ['50%', '50%', targetTop],
+                    opacity: [0, 1, 1, 0],
+                    scale: [0.5, 1, 1, 0.5],
+                  }}
+                  transition={{
+                    duration: 2.2, // Slower motion
+                    ease: "easeInOut",
+                    times: [0, 0.4, 0.9, 1]
+                  }}
+                  exit={{ opacity: 0 }}
+                  className={`absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full ${request.targetServerId ? 'bg-cyan-400 shadow-[0_0_10px_#22d3ee]' : 'bg-rose-400 shadow-[0_0_10px_#fb7185]'}`}
+                />
+                
+                {/* Impact ripple */}
+                {request.targetServerId && (
+                  <motion.div
+                    initial={{ left: '73%', top: targetTop, opacity: 0, scale: 0.5 }}
+                    animate={{ 
+                      opacity: [0, 0.5, 0],
+                      scale: [0.5, 2, 3],
+                    }}
+                    transition={{
+                      delay: 2.0, // Matches the end of the pulse
+                      duration: 0.6
+                    }}
+                    className="absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-400/50"
+                  />
+                )}
+              </React.Fragment>
+            )
+          })}
+        </AnimatePresence>
+      </div>
+      
+      {/* Background patterns */}
+      <div className="pointer-events-none absolute inset-0 opacity-[0.03]" 
+           style={{ backgroundImage: 'radial-gradient(#fff 1px, transparent 1px)', backgroundSize: '24px 24px' }} 
+      />
     </div>
-
-    <div className="pointer-events-none absolute inset-x-8 inset-y-8 hidden lg:block">
-      <div className="absolute left-[16%] top-1/2 h-[2px] w-[18%] -translate-y-1/2 bg-gradient-to-r from-cyan-400/10 to-cyan-300/60" />
-      <div className="absolute left-[34%] top-1/2 h-[2px] w-[42%] -translate-y-1/2 bg-gradient-to-r from-indigo-300/70 to-emerald-300/40" />
-
-      <AnimatePresence>
-        {requests.map(request => (
-          <React.Fragment key={request.id}>
-            <motion.div
-              initial={{ left: '14%', top: '50%', opacity: 0, scale: 0.35 }}
-              animate={{
-                left: '34%',
-                top: '50%',
-                opacity: [0, 1, 1],
-                scale: [0.35, 1, 1],
-                transition: { duration: 0.7, ease: 'easeOut' },
-              }}
-              exit={{ opacity: 0 }}
-              className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-300 shadow-[0_0_18px_#67e8f9]"
-            />
-
-            <motion.div
-              initial={{ left: '34%', top: '50%', opacity: 0, scale: 0.55 }}
-              animate={{
-                left: request.targetServerId ? (targetPosition[request.targetServerId]?.left ?? '82%') : '34%',
-                top: request.targetServerId ? (targetPosition[request.targetServerId]?.top ?? '50%') : '50%',
-                opacity: request.targetServerId ? [0, 1, 1] : [0, 1, 1],
-                scale: [0.55, 1, 1],
-                transition: { delay: 0.65, duration: 1.05, ease: 'easeInOut' },
-              }}
-              exit={{ opacity: 0, scale: 0.5 }}
-              className={`absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full ${request.targetServerId ? 'bg-emerald-300 shadow-[0_0_18px_#86efac]' : 'bg-rose-300 shadow-[0_0_18px_#fda4af]'}`}
-            />
-
-            {request.targetServerId && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.7 }}
-                animate={{
-                  opacity: [0, 0.9, 0],
-                  scale: [0.7, 1.35, 1.7],
-                  transition: { delay: 1.55, duration: 0.45 },
-                }}
-                exit={{ opacity: 0 }}
-                className="absolute h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full border border-emerald-300/70"
-                style={{
-                  left: targetPosition[request.targetServerId]?.left ?? '82%',
-                  top: targetPosition[request.targetServerId]?.top ?? '50%',
-                }}
-              />
-            )}
-          </React.Fragment>
-        ))}
-      </AnimatePresence>
-    </div>
-
-    <div className="mt-8 flex items-center justify-center gap-3 text-xs font-black uppercase tracking-[0.28em] text-slate-500">
-      <span>Request block</span>
-      <ArrowRight className="h-4 w-4" />
-      <span>Choose best server</span>
-      <ArrowRight className="h-4 w-4" />
-      <span className="text-emerald-200">Animate to chosen server</span>
-    </div>
-
-    <div className="pointer-events-none absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle, rgba(34,211,238,0.7) 1px, transparent 1px)', backgroundSize: '26px 26px' }} />
-  </div>
-)
+  )
+}
 
 export default SimulationView
