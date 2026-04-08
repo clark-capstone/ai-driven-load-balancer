@@ -1,5 +1,7 @@
 package com.capstone.alb.model;
 
+import java.time.Instant;
+
 public class SystemMetrics {
 
     private String serverId;
@@ -14,8 +16,13 @@ public class SystemMetrics {
 
     private long requestCount;
 
-    private String timestamp;
+    private Instant timestamp;
 
+    // ✅ Default constructor (REQUIRED for JSON deserialization)
+    public SystemMetrics() {
+    }
+
+    // ✅ Parameterized constructor
     public SystemMetrics(String serverId,
                          String hostname,
                          double cpuUsage,
@@ -24,7 +31,7 @@ public class SystemMetrics {
                          double memoryUsage,
                          long heapUsed,
                          long requestCount,
-                         String timestamp) {
+                         Instant timestamp) {
 
         this.serverId = serverId;
         this.hostname = hostname;
@@ -37,21 +44,77 @@ public class SystemMetrics {
         this.timestamp = timestamp;
     }
 
-    public String getServerId() { return serverId; }
+    // ✅ Getters & Setters (needed for REST + flexibility)
 
-    public String getHostname() { return hostname; }
+    public String getServerId() {
+        return serverId;
+    }
 
-    public double getCpuUsage() { return cpuUsage; }
+    public void setServerId(String serverId) {
+        this.serverId = serverId;
+    }
 
-    public double getProcessCpuLoad() { return processCpuLoad; }
+    public String getHostname() {
+        return hostname;
+    }
 
-    public int getCpuCores() { return cpuCores; }
+    public void setHostname(String hostname) {
+        this.hostname = hostname;
+    }
 
-    public double getMemoryUsage() { return memoryUsage; }
+    public double getCpuUsage() {
+        return cpuUsage;
+    }
 
-    public long getHeapUsed() { return heapUsed; }
+    public void setCpuUsage(double cpuUsage) {
+        this.cpuUsage = cpuUsage;
+    }
 
-    public long getRequestCount() { return requestCount; }
+    public double getProcessCpuLoad() {
+        return processCpuLoad;
+    }
 
-    public String getTimestamp() { return timestamp; }
+    public void setProcessCpuLoad(double processCpuLoad) {
+        this.processCpuLoad = processCpuLoad;
+    }
+
+    public int getCpuCores() {
+        return cpuCores;
+    }
+
+    public void setCpuCores(int cpuCores) {
+        this.cpuCores = cpuCores;
+    }
+
+    public double getMemoryUsage() {
+        return memoryUsage;
+    }
+
+    public void setMemoryUsage(double memoryUsage) {
+        this.memoryUsage = memoryUsage;
+    }
+
+    public long getHeapUsed() {
+        return heapUsed;
+    }
+
+    public void setHeapUsed(long heapUsed) {
+        this.heapUsed = heapUsed;
+    }
+
+    public long getRequestCount() {
+        return requestCount;
+    }
+
+    public void setRequestCount(long requestCount) {
+        this.requestCount = requestCount;
+    }
+
+    public Instant getTimestamp() {
+        return timestamp;
+    }
+
+    public void setTimestamp(Instant timestamp) {
+        this.timestamp = timestamp;
+    }
 }

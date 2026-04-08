@@ -1,35 +1,48 @@
 package com.capstone.alb.strategy;
 
-import java.util.List;
+import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestTemplate;
-import com.sun.management.OperatingSystemMXBean;
-import java.lang.management.ManagementFactory;
-
+import com.capstone.alb.model.SystemMetrics;
 
 @Component
 @Primary
 public class LeastCpuStrategy implements LoadBalancingStrategy {
 
-	@Override
-    public String getNextServer() {
+    private static final Logger logger = LoggerFactory.getLogger(LeastCpuStrategy.class);
 
-        double cpu = getCpuUsage();
+    @Override
+    public String selectNode(Map<String, SystemMetrics> metrics) {
 
-        if (cpu < 50) {
-            return "A";
-        } else {
-            return "B";
+        double lowestCpu = Double.MAX_VALUE;
+        String bestNode = null;
+
+        for (Map.Entry<String, SystemMetrics> entry : metrics.entrySet()) {
+
+            String node = entry.getKey();
+            SystemMetrics data = entry.getValue();
+
+            if (data == null) continue;
+
+            double cpu = data.getCpuUsage();
+
+            logger.debug("Node: {} | CPU: {}", node, cpu);
+
+            if (cpu < lowestCpu) {
+                lowestCpu = cpu;
+                bestNode = node;
+            }
         }
-    }
 
-    private double getCpuUsage() {
+        if (bestNode == null) {
+            logger.warn("No suitable node found, defaulting fallback");
+            return "NO_NODE_AVAILABLE";
+        }
 
-        com.sun.management.OperatingSystemMXBean osBean =
-                java.lang.management.ManagementFactory.getPlatformMXBean(
-                        com.sun.management.OperatingSystemMXBean.class);
+        logger.info("Selected node (Least CPU): {} with CPU: {}", bestNode, lowestCpu);
 
-        return osBean.getCpuLoad() * 100;
+        return bestNode;
     }
 }

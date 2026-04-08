@@ -3,10 +3,11 @@ package com.capstone.alb.controller;
 import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryMXBean;
 import java.net.InetAddress;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
+import java.time.Instant;
+
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
+
 import com.capstone.alb.model.SystemMetrics;
 import com.capstone.alb.service.RequestCounterService;
 import com.sun.management.OperatingSystemMXBean;
@@ -21,33 +22,29 @@ public class MetricsController {
     }
 
     @GetMapping("/metrics")
-    public SystemMetrics getMetrics() throws Exception {
+    public SystemMetrics getMetrics() {
 
         OperatingSystemMXBean osBean =
                 ManagementFactory.getPlatformMXBean(OperatingSystemMXBean.class);
 
         MemoryMXBean memoryBean = ManagementFactory.getMemoryMXBean();
 
-        double cpuUsage = osBean.getCpuLoad() * 100;
-        double processCpuLoad = osBean.getProcessCpuLoad() * 100;
+        double cpuUsage = safePercentage(osBean.getCpuLoad());
+        double processCpuLoad = safePercentage(osBean.getProcessCpuLoad());
 
         int cpuCores = osBean.getAvailableProcessors();
 
         long totalMemory = osBean.getTotalMemorySize();
         long freeMemory = osBean.getFreeMemorySize();
 
-        double memoryUsage =
-                ((double)(totalMemory - freeMemory) / totalMemory) * 100;
+        double memoryUsage = totalMemory > 0
+                ? ((double) (totalMemory - freeMemory) / totalMemory) * 100
+                : 0;
 
         long heapUsed = memoryBean.getHeapMemoryUsage().getUsed();
 
-        String hostname = InetAddress.getLocalHost().getHostName();
-
+        String hostname = getHostnameSafe();
         String serverId = hostname;
-
-        String timestamp =
-                LocalDateTime.now()
-                        .format(DateTimeFormatter.ofPattern("MM-dd-yyyy HH:mm:ss"));
 
         return new SystemMetrics(
                 serverId,
@@ -58,7 +55,22 @@ public class MetricsController {
                 memoryUsage,
                 heapUsed,
                 requestCounter.getCount(),
-                timestamp
+                Instant.now()
         );
+    }
+
+    // ✅ Prevents -1 or invalid CPU values
+    private double safePercentage(double value) {
+        if (value < 0) return 0;
+        return value * 100;
+    }
+
+    // ✅ Prevents crash if hostname fails
+    private String getHostnameSafe() {
+        try {
+            return InetAddress.getLocalHost().getHostName();
+        } catch (Exception e) {
+            return "unknown-host";
+        }
     }
 }
