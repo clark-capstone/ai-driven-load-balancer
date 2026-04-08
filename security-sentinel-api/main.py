@@ -54,6 +54,69 @@ except (FileNotFoundError, Exception) as e:
         raise
 
 
+def is_degenerate_model(model) -> bool:
+    estimators = getattr(model.iso_forest, "estimators_", [])
+    if not estimators:
+        return True
+
+    return all(est.tree_.node_count <= 1 for est in estimators)
+
+
+def compute_threat_confidence(features: np.ndarray, prediction: int, rule_triggered: bool) -> float:
+    request_rate = float(features[0])
+    payload_size = float(features[1])
+    syn_flood = float(features[4])
+    port_diversity = float(features[6])
+    ttl_anomaly = float(features[7])
+    fragmentation = float(features[8])
+    protocol_abuse = float(features[9])
+    common_user_agent = float(features[10])
+
+    payload_risk = 1.0 - min(payload_size * 2.0, 1.0)
+    user_agent_risk = 1.0 - common_user_agent
+
+    weighted_risk = (
+        request_rate * 0.30
+        + payload_risk * 0.18
+        + syn_flood * 0.14
+        + port_diversity * 0.12
+        + ttl_anomaly * 0.08
+        + fragmentation * 0.08
+        + protocol_abuse * 0.06
+        + user_agent_risk * 0.04
+    )
+    weighted_risk = float(np.clip(weighted_risk, 0.0, 1.0))
+
+    if rule_triggered:
+        return float(max(0.93, weighted_risk))
+
+    if prediction == -1:
+        return float(max(0.72, weighted_risk))
+
+    return float(min(weighted_risk, 0.68))
+
+
+def should_block_request(request: "RequestFeatures", features: np.ndarray, thresholds: dict) -> tuple[bool, str | None]:
+    request_rate_feature = float(features[0])
+    payload_feature = float(features[1])
+    raw_request_rate = float(request.request_rate)
+    raw_payload_size = int(request.payload_size)
+
+    ddos_rule = (
+        request_rate_feature > thresholds["ddos_rate_threshold"]
+        and payload_feature < thresholds["ddos_payload_threshold"]
+    )
+    if ddos_rule:
+        return True, "DDoS_rate_volume_check"
+
+    # Repeated-hit demo rule for real browser/curl bursts against the same local service.
+    burst_rule = raw_request_rate >= 20.0 and raw_payload_size <= 256
+    if burst_rule:
+        return True, "burst_rate_small_payload"
+
+    return False, None
+
+
 class RequestFeatures(BaseModel):
     """
     HTTP request features for threat detection (12-dimensional).
@@ -173,26 +236,30 @@ def score_request(request: RequestFeatures) -> ThreatScore:
         # Make prediction
         prediction = model.predict(features_batch)[0]
         
-        # Compute confidence based on anomaly score
-        decision_score = model.iso_forest.score_samples(features_batch)[0]
-        confidence = 1.0 / (1.0 + np.exp(decision_score))  # Sigmoid normalization
-        confidence = float(np.clip(confidence, 0.0, 1.0))
-        
+        rule_triggered, rule_name = should_block_request(request, features, thresholds)
+
         # Determine result
-        result = "block" if prediction == -1 else "allow"
-        
+        result = "block" if prediction == -1 or rule_triggered else "allow"
+
         # Metadata
         metadata = {
             "prediction_score": float(prediction),
-            "anomaly_score": float(decision_score)
         }
-        
-        # Check if hard rule triggered
-        request_rate = features[0]
-        payload_size = features[1]
-        if (request_rate > thresholds["ddos_rate_threshold"] and 
-            payload_size < thresholds["ddos_payload_threshold"]):
-            metadata["rule_triggered"] = "DDoS_rate_volume_check"
+
+        if is_degenerate_model(model):
+            confidence = compute_threat_confidence(features, prediction, rule_triggered)
+            metadata["anomaly_score"] = None
+            metadata["confidence_source"] = "feature_heuristic"
+            metadata["model_warning"] = "Isolation Forest scores are constant; using heuristic confidence"
+        else:
+            decision_score = model.iso_forest.score_samples(features_batch)[0]
+            confidence = 1.0 / (1.0 + np.exp(decision_score))  # Sigmoid normalization
+            confidence = float(np.clip(confidence, 0.0, 1.0))
+            metadata["anomaly_score"] = float(decision_score)
+            metadata["confidence_source"] = "isolation_forest"
+
+        if rule_name is not None:
+            metadata["rule_triggered"] = rule_name
         
         inference_time = (time.perf_counter() - start_time) * 1000  # milliseconds
         

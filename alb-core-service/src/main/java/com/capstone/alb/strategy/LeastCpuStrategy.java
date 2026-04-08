@@ -14,14 +14,7 @@ public class LeastCpuStrategy implements LoadBalancingStrategy {
 
 	@Override
     public String getNextServer() {
-
-        double cpu = getCpuUsage();
-
-        if (cpu < 50) {
-            return "A";
-        } else {
-            return "B";
-        }
+        return "A";
     }
 
     private double getCpuUsage() {
